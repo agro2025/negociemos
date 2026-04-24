@@ -1,0 +1,802 @@
+<!-- 
+  Versión: 1.1.1
+  Fecha: 24 de Abril de 2026
+  Hora: 10:55 PM UTC
+  Cambios: 
+  - NINGÚN CAMBIO VISUAL NI ESTRUCTURAL. 
+  - Se agregó 'transformHeader: h => h.trim()' para evitar errores "undefined" en los textos por espacios en el Google Sheet.
+  - NUEVO: Sistema de Seguridad Anti-Copia (Bloqueo de clic derecho global, bloqueo de teclas F12, Ctrl+U, Ctrl+S, Ctrl+Shift+I).
+-->
+<!DOCTYPE html>
+<html lang="es" class="scroll-smooth">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AutoBroker | Salvamentos Premium Colombia</title>
+    
+    <!-- Fuentes Google -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Playfair+Display:wght@600;700&display=swap" rel="stylesheet">
+
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Icons (FontAwesome) -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <!-- PapaParse -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+
+    <!-- Configuración de Colores Original -->
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: { sans:['Inter', 'sans-serif'], serif:['Playfair Display', 'serif'] },
+                    colors: { dark: '#050505', surface: '#111111', gold: '#D4AF37', goldHover: '#F3D55B', grayLight: '#A1A1AA' }
+                }
+            }
+        }
+    </script>
+
+    <style>
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: #050505; }
+        ::-webkit-scrollbar-thumb { background: #D4AF37; border-radius: 4px; }
+
+        body { background-color: theme('colors.dark'); color: theme('colors.gray.200'); overflow-x: hidden; }
+        /* Bloqueo de selección de texto */
+        .no-select { user-select: none; -webkit-user-drag: none; -webkit-touch-callout: none; }
+        .hidden-spa { display: none !important; }
+
+        .glass-header {
+            background: rgba(5, 5, 5, 0.7); backdrop-filter: blur(16px);
+            border-bottom: 1px solid rgba(212, 175, 55, 0.1); transition: all 0.3s ease;
+        }
+        .glass-header.scrolled {
+            background: rgba(5, 5, 5, 0.95); box-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.5);
+            padding-top: 0.75rem; padding-bottom: 0.75rem;
+        }
+
+        @keyframes fadeInUp { 0% { opacity: 0; transform: translateY(40px); } 100% { opacity: 1; transform: translateY(0); } }
+        .animate-hero { animation: fadeInUp 1s ease-out forwards; opacity: 0; }
+        .delay-1 { animation-delay: 0.3s; }
+        .delay-2 { animation-delay: 0.6s; }
+        .scroll-anim { opacity: 0; transform: translateY(30px); transition: all 0.8s ease-out; }
+        .scroll-anim.visible { opacity: 1; transform: translateY(0); }
+
+        .watermark-wrapper { position: relative; display: block; overflow: hidden; }
+        
+        .card-overlay {
+            opacity: 0; transform: translateY(10px); transition: all 0.4s ease;
+            background: rgba(5, 5, 5, 0.85); backdrop-filter: blur(8px); pointer-events: auto;
+        }
+        
+        .photo-container:hover:not(.hide-overlay) .card-overlay, 
+        .photo-container:focus-within:not(.hide-overlay) .card-overlay {
+            opacity: 1; transform: translateY(0);
+        }
+        
+        .photo-container:hover:not(.hide-overlay) .vehicle-img { 
+            transform: scale(1.05); 
+        }
+        .vehicle-img { transition: transform 0.5s ease; }
+        .photo-box { border: 2px solid transparent; transition: all 0.3s ease; }
+        .photo-box:hover { border-color: white; }
+    </style>
+</head>
+
+<body class="no-select flex flex-col min-h-screen">
+
+    <!-- HEADER -->
+    <header id="header" class="glass-header fixed top-0 left-0 w-full z-50 py-5">
+        <div class="max-w-7xl mx-auto px-6 flex justify-between items-center">
+            <a href="#" onclick="app.navigate('home')" class="font-serif text-2xl font-bold text-white tracking-wide flex items-center gap-2">
+                <i class="fa-solid fa-car-burst text-gold"></i> Auto<span class="text-gold">Broker</span>
+            </a>
+            
+            <nav class="hidden md:flex items-center font-medium text-xs text-grayLight tracking-widest">
+                <a href="#footer" class="hover:text-white transition uppercase">NOSOTROS</a>
+                <button onclick="app.navigate('admin-login')" class="ml-6 text-dark bg-dark border border-gray-900 rounded p-1 hover:border-gray-700 hover:text-gray-800 transition duration-500 cursor-default flex items-center justify-center" title="Área Reservada">
+                    <i class="fa-solid fa-lock text-sm"></i>
+                </button>
+            </nav>
+            <button id="mobile-menu-btn" class="md:hidden text-white text-2xl"><i class="fa-solid fa-bars"></i></button>
+        </div>
+        
+        <nav id="mobile-nav" class="fixed top-0 right-[-100%] w-64 h-screen bg-surface border-l border-gray-800 flex flex-col pt-24 px-6 gap-6 transition-all duration-300 z-40 shadow-2xl">
+            <a href="#footer" onclick="document.getElementById('mobile-nav').style.right='-100%'" class="text-lg text-white hover:text-gold border-b border-gray-800 pb-3">NOSOTROS</a>
+            <button onclick="app.navigate('admin-login'); document.getElementById('mobile-nav').style.right='-100%'" class="mt-4 text-gray-800 text-left"><i class="fa-solid fa-lock text-2xl"></i></button>
+        </nav>
+    </header>
+
+    <!-- VIEW: HOME (INDEX) -->
+    <main id="view-home" class="spa-view flex-grow">
+        <section class="relative flex items-center pt-32 pb-12 overflow-hidden text-center">
+            <div class="absolute inset-0 z-0">
+                <div class="absolute inset-0 bg-dark z-10 opacity-60"></div>
+                <img src="https://images.unsplash.com/photo-1560005740-42289c099fb8?ixlib=rb-4.0.3&auto=format&fit=crop&w=1920&q=80" alt="Luxury Cars" class="w-full h-full object-cover opacity-20">
+                <div class="absolute inset-0 bg-gradient-to-t from-dark via-transparent to-transparent z-10"></div>
+            </div>
+            <div class="max-w-4xl mx-auto px-6 relative z-20 w-full">
+                <h1 class="text-4xl md:text-5xl lg:text-6xl font-serif text-white leading-tight mb-4 animate-hero">
+                    Oportunidades <span class="text-gold italic">Exclusivas</span><br>en Salvamentos
+                </h1>
+                <p class="text-sm md:text-base text-grayLight font-light animate-hero delay-1 max-w-2xl mx-auto">
+                    El catálogo líder en Colombia para la gestión e inversión en vehículos siniestrados y recuperados.<br>Transparencia, rentabilidad y confianza.
+                </p>
+            </div>
+        </section>
+
+        <!-- INVENTARIO -->
+        <section id="inventario" class="py-8 bg-dark relative z-10">
+            <div class="max-w-7xl mx-auto px-6">
+                <div class="flex flex-col md:flex-row gap-4 mb-10 scroll-anim max-w-4xl mx-auto">
+                    <div class="relative flex-grow">
+                        <i class="fa-solid fa-magnifying-glass absolute left-4 top-4 text-gray-500"></i>
+                        <input type="text" id="searchInput" placeholder="Buscar por marca, modelo o color..." class="w-full bg-surface border border-gray-800 text-white rounded-xl pl-12 pr-4 py-3.5 focus:border-gold outline-none transition text-sm">
+                    </div>
+                    <select id="filterBrand" class="bg-surface border border-gray-800 text-white rounded-xl px-6 py-3.5 focus:border-gold outline-none transition min-w-[200px] text-sm"></select>
+                </div>
+
+                <div id="loader" class="flex justify-center py-10"><i class="fa-solid fa-circle-notch fa-spin text-4xl text-gold"></i></div>
+                <div id="catalogGrid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"></div>
+            </div>
+        </section>
+    </main>
+
+    <!-- VIEW: ADMIN LOGIN -->
+    <main id="view-admin-login" class="spa-view hidden-spa flex-grow flex items-center justify-center pt-24 pb-12 px-6">
+        <div class="w-full max-w-md bg-surface p-10 rounded-2xl border border-gray-800">
+            <div class="text-center mb-8"><i class="fa-solid fa-user-shield text-gold text-5xl mb-4"></i><h2 class="text-3xl font-serif text-white">Panel Seguro</h2></div>
+            <form onsubmit="app.handleLogin(event)">
+                <input type="password" id="adminPin" placeholder="PIN" required class="w-full mb-6 bg-dark border border-gray-700 text-gold rounded-lg px-4 py-4 text-center tracking-[1em] text-2xl font-bold outline-none focus:border-gold">
+                <button type="submit" class="w-full bg-gold text-dark font-bold py-4 rounded-lg uppercase tracking-wide">Ingresar</button>
+                <button type="button" onclick="app.navigate('home')" class="w-full text-gray-500 hover:text-white mt-4 text-sm">Volver al sitio</button>
+            </form>
+        </div>
+    </main>
+
+    <!-- VIEW: ADMIN DASHBOARD (CONTROL) -->
+    <main id="view-admin-dashboard" class="spa-view hidden-spa flex-grow pt-28 pb-12 px-4 max-w-6xl mx-auto w-full">
+        <div class="flex justify-between items-end mb-8 border-b border-gray-800 pb-4">
+            <div>
+                <h2 class="text-4xl font-serif text-white font-bold">Panel de <span class="text-gold">Control</span></h2>
+                <p class="text-blue-400 text-sm mt-1">Gestión de Inventario (Almacenamiento Local)</p>
+            </div>
+            <div class="flex gap-4">
+                <button onclick="app.resetToSheet()" class="px-4 py-2 border border-gray-700 text-gray-300 hover:bg-gray-800 rounded text-sm transition font-medium flex items-center gap-2">
+                    <i class="fa-solid fa-rotate-right"></i> RESTAURAR DATOS
+                </button>
+                <button onclick="app.createVehicle()" class="px-4 py-2 bg-gold hover:bg-goldHover text-dark rounded text-sm transition font-bold flex items-center gap-2">
+                    <i class="fa-solid fa-plus"></i> NUEVO VEHÍCULO
+                </button>
+                <button onclick="app.logout()" class="px-3 py-2 text-gray-500 hover:text-white text-xl ml-2"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+        </div>
+        
+        <div class="bg-surface rounded-lg border border-gray-800 overflow-hidden shadow-2xl">
+            <div class="grid grid-cols-12 gap-4 p-4 border-b border-gray-800 text-xs font-bold text-gray-500 tracking-wider">
+                <div class="col-span-2">ID</div>
+                <div class="col-span-3">VEHÍCULO</div>
+                <div class="col-span-2 text-center">FOTOS</div>
+                <div class="col-span-2">PRECIO</div>
+                <div class="col-span-2">ESTADO</div>
+                <div class="col-span-1 text-center">ACCIONES</div>
+            </div>
+            <div id="adminList" class="divide-y divide-gray-800"></div>
+        </div>
+    </main>
+
+    <!-- VIEW: ADMIN EDIT (EDITAR VEHÍCULO) -->
+    <main id="view-admin-edit" class="spa-view hidden-spa flex-grow pt-28 pb-12 px-4 max-w-4xl mx-auto w-full">
+        <h2 class="text-3xl font-serif text-white font-bold mb-8">Editar Vehículo</h2>
+        
+        <form id="editForm" class="bg-surface p-8 rounded-lg border border-gray-800 space-y-6" onsubmit="app.saveVehicle(event)">
+            <div class="grid grid-cols-2 gap-6">
+                <div>
+                    <label class="block text-xs text-gray-500 font-bold mb-2 uppercase">ID</label>
+                    <input type="text" id="edit-id" required class="w-full bg-dark border border-gray-800 text-white p-3 rounded outline-none focus:border-gold text-sm transition" placeholder="Ej: AB-001">
+                </div>
+                <div>
+                    <label class="block text-xs text-gray-500 font-bold mb-2 uppercase">Marca</label>
+                    <input type="text" id="edit-marca" required class="w-full bg-dark border border-gray-800 text-white p-3 rounded outline-none focus:border-gold text-sm transition">
+                </div>
+                <div>
+                    <label class="block text-xs text-gray-500 font-bold mb-2 uppercase">Modelo</label>
+                    <input type="text" id="edit-modelo" required class="w-full bg-dark border border-gray-800 text-white p-3 rounded outline-none focus:border-gold text-sm transition">
+                </div>
+                <div>
+                    <label class="block text-xs text-gray-500 font-bold mb-2 uppercase">Año</label>
+                    <input type="number" id="edit-ano" required class="w-full bg-dark border border-gray-800 text-white p-3 rounded outline-none focus:border-gold text-sm transition">
+                </div>
+                <div>
+                    <label class="block text-xs text-gray-500 font-bold mb-2 uppercase">Precio</label>
+                    <input type="number" id="edit-precio" required class="w-full bg-dark border border-gray-800 text-white p-3 rounded outline-none focus:border-gold text-sm transition">
+                </div>
+                <div>
+                    <label class="block text-xs text-gray-500 font-bold mb-2 uppercase">Color</label>
+                    <input type="text" id="edit-color" required class="w-full bg-dark border border-gray-800 text-white p-3 rounded outline-none focus:border-gold text-sm transition">
+                </div>
+                <div>
+                    <label class="block text-xs text-gray-500 font-bold mb-2 uppercase">Estado</label>
+                    <select id="edit-estado" class="w-full bg-dark border border-gray-800 text-white p-3 rounded outline-none focus:border-gold text-sm transition">
+                        <option value="Disponible">Disponible</option>
+                        <option value="Reservado">Reservado</option>
+                        <option value="Vendido">Vendido</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-xs text-gray-500 font-bold mb-2 uppercase">Nivel Siniestro</label>
+                    <select id="edit-siniestro" class="w-full bg-dark border border-gray-800 text-white p-3 rounded outline-none focus:border-gold text-sm transition">
+                        <option value="Ninguno">Ninguno</option>
+                        <option value="Leve">Leve</option>
+                        <option value="Medio">Medio</option>
+                        <option value="Alto">Alto</option>
+                        <option value="Total">Total</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="pt-4 border-t border-gray-800">
+                <label class="block text-xs text-gray-500 font-bold mb-2 uppercase">FOTO DEL VEHÍCULO</label>
+                <div class="flex items-center gap-4 bg-dark border border-gray-800 rounded p-2 mb-2">
+                    <input type="file" id="fileInput" multiple accept="image/*" class="hidden" onchange="app.handleFileUpload(event)">
+                    <button type="button" onclick="document.getElementById('fileInput').click()" class="bg-gold text-dark px-4 py-2 text-sm font-bold rounded hover:bg-goldHover transition">Elegir archivos</button>
+                    <span id="fileCountText" class="text-sm text-gray-300 font-medium">No se ha seleccionado ningún archivo</span>
+                </div>
+                <p class="text-xs text-gray-500 mb-4">✓ Puedes seleccionar hasta 4 fotos a la vez. La Foto_1 es la principal.</p>
+                
+                <div class="grid grid-cols-4 gap-4" id="edit-photo-boxes">
+                    <!-- Se inyectan por JS -->
+                </div>
+            </div>
+
+            <div class="pt-4">
+                <label class="block text-xs text-gray-500 font-bold mb-2 uppercase">Descripción</label>
+                <textarea id="edit-desc" rows="4" required class="w-full bg-dark border border-gray-800 text-white p-3 rounded outline-none focus:border-gold text-sm resize-none transition"></textarea>
+            </div>
+
+            <div class="pt-6 border-t border-gray-800 flex justify-end gap-4 items-center">
+                <button type="button" onclick="app.navigate('admin-dashboard')" class="text-gray-400 hover:text-white text-sm font-bold uppercase tracking-wider transition">Cancelar</button>
+                <button type="submit" class="bg-gold hover:bg-goldHover text-dark px-8 py-3 rounded text-sm font-bold uppercase tracking-wider transition">Guardar</button>
+            </div>
+        </form>
+    </main>
+
+    <!-- FOOTER -->
+    <footer id="footer" class="bg-[#050505] pt-12 pb-6 border-t border-gray-900 mt-auto">
+        <div class="max-w-7xl mx-auto px-6 grid grid-cols-1 md:grid-cols-3 gap-8 mb-8">
+            <div>
+                <div class="font-serif text-xl font-bold text-white tracking-wide flex items-center gap-2 mb-4">
+                    <i class="fa-solid fa-car-burst text-gold"></i> Auto<span class="text-gold">Broker</span>
+                </div>
+                <p class="text-xs text-gray-500 leading-relaxed">
+                    Especialistas en la comercialización de salvamentos automotrices en Colombia. Conectamos oportunidades de inversión con compradores inteligentes bajo los más altos estándares de transparencia.
+                </p>
+            </div>
+            <div>
+                <h3 class="text-white text-sm font-bold tracking-widest mb-4">CONTACTO</h3>
+                <ul class="text-xs text-gray-500 space-y-2">
+                    <li class="flex items-center gap-2"><i class="fa-brands fa-whatsapp text-gold w-4"></i> +57 312 407 7651</li>
+                    <li class="flex items-center gap-2"><i class="fa-regular fa-envelope text-gold w-4"></i> inversiones@autobroker.co</li>
+                    <li class="flex items-center gap-2"><i class="fa-solid fa-location-dot text-gold w-4"></i> Bogotá D.C., Colombia</li>
+                </ul>
+            </div>
+            <div>
+                <h3 class="text-white text-sm font-bold tracking-widest mb-4">LEGAL</h3>
+                <ul class="text-xs text-gray-500 space-y-2">
+                    <li><a href="#" class="hover:text-gold transition">Términos y Condiciones</a></li>
+                    <li><a href="#" class="hover:text-gold transition">Políticas de Privacidad</a></li>
+                    <li><a href="#" class="hover:text-gold transition">Garantías de Salvamento</a></li>
+                </ul>
+            </div>
+        </div>
+        <div class="border-t border-gray-900 pt-6 text-center text-gray-600 text-xs">
+            Diseñado por Hernán Torres - ai2024tester@gmail.com
+        </div>
+    </footer>
+
+    <!-- WhatsApp Flotante -->
+    <a href="https://wa.me/573124077651" target="_blank" class="fixed bottom-6 right-6 w-14 h-14 bg-[#25D366] text-white rounded-full flex items-center justify-center text-3xl shadow-[0_4px_20px_rgba(37,211,102,0.4)] hover:scale-110 hover:bg-[#1DA851] transition z-50">
+        <i class="fa-brands fa-whatsapp"></i>
+    </a>
+
+    <!-- LÓGICA JAVASCRIPT -->
+    <script>
+        const app = {
+            sheetCsvUrl: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQqlmi82NTBNWWoFpzuJGUfHS6A9NWJtLUsxvXL2yn1XXiVeJf7EaRgiNW8Elp4E4-2p5vHxs897L77/pub?output=csv', 
+            adminWhatsApp: '573124077651', 
+            correctPin: '1234',
+
+            vehicles:[],
+            brands: new Set(),
+            isAdmin: false,
+            
+            tempPhotos:[],
+            isCreatingNew: false,
+            editingOriginalId: null,
+
+            init() {
+                this.bindEvents();
+                this.setupSecurity(); // ESCUDO ANTI-COPIA INICIADO
+                this.initScrollAnimations();
+                this.fetchData();
+            },
+
+            // NUEVO: SISTEMA DE SEGURIDAD ANTI-COPIA
+            setupSecurity() {
+                // 1. Bloquear clic derecho global
+                document.addEventListener('contextmenu', e => e.preventDefault());
+
+                // 2. Bloquear atajos de teclado de desarrolladores
+                document.addEventListener('keydown', e => {
+                    // Bloquear F12
+                    if (e.key === 'F12') e.preventDefault();
+                    
+                    if (e.ctrlKey) {
+                        // Bloquear Ctrl + U (Ver código fuente)
+                        if (e.key.toLowerCase() === 'u') e.preventDefault();
+                        // Bloquear Ctrl + S (Guardar página)
+                        if (e.key.toLowerCase() === 's') e.preventDefault();
+                        
+                        // Bloquear Ctrl + Shift + I / J / C (Herramientas de desarrollador)
+                        if (e.shiftKey &&['i', 'j', 'c'].includes(e.key.toLowerCase())) {
+                            e.preventDefault();
+                        }
+                    }
+                });
+            },
+
+            compressImage(file, maxWidth = 600, quality = 0.5) {
+                return new Promise((resolve, reject) => {
+                    const reader = new FileReader();
+                    reader.readAsDataURL(file);
+                    reader.onload = event => {
+                        const img = new Image();
+                        img.src = event.target.result;
+                        img.onload = () => {
+                            const canvas = document.createElement('canvas');
+                            let width = img.width;
+                            let height = img.height;
+
+                            if (width > maxWidth) {
+                                height = Math.round((height * maxWidth) / width);
+                                width = maxWidth;
+                            }
+
+                            canvas.width = width;
+                            canvas.height = height;
+                            const ctx = canvas.getContext('2d');
+                            ctx.drawImage(img, 0, 0, width, height);
+
+                            const compressedBase64 = canvas.toDataURL('image/jpeg', quality);
+                            resolve(compressedBase64);
+                        };
+                        img.onerror = error => reject(error);
+                    };
+                    reader.onerror = error => reject(error);
+                });
+            },
+
+            getDriveDirectLink(url) {
+                if (!url) return null;
+                if (url.includes('drive.google.com/file/d/')) {
+                    const match = url.match(/\/d\/([a-zA-Z0-9_-]+)/);
+                    if (match && match[1]) return `https://drive.google.com/uc?export=view&id=${match[1]}`;
+                }
+                return url;
+            },
+
+            navigate(view) {
+                document.querySelectorAll('.spa-view').forEach(el => el.classList.add('hidden-spa'));
+                document.getElementById(`view-${view}`).classList.remove('hidden-spa');
+                if(view === 'home') this.renderCatalog();
+                if(view === 'admin-dashboard') {
+                    if(!this.isAdmin) return this.navigate('admin-login');
+                    this.renderAdmin();
+                }
+                window.scrollTo(0,0);
+            },
+
+            bindEvents() {
+                const header = document.getElementById('header');
+                window.addEventListener('scroll', () => {
+                    if (window.scrollY > 50) header.classList.add('scrolled');
+                    else header.classList.remove('scrolled');
+                });
+                document.getElementById('mobile-menu-btn').addEventListener('click', () => {
+                    const nav = document.getElementById('mobile-nav');
+                    nav.style.right = nav.style.right === '0px' ? '-100%' : '0px';
+                });
+                document.getElementById('searchInput').addEventListener('input', () => this.renderCatalog());
+                document.getElementById('filterBrand').addEventListener('change', () => this.renderCatalog());
+            },
+
+            initScrollAnimations() {
+                const observer = new IntersectionObserver((entries) => {
+                    entries.forEach(entry => { if (entry.isIntersecting) entry.target.classList.add('visible'); });
+                }, { threshold: 0.1 });
+                setInterval(() => { document.querySelectorAll('.scroll-anim:not(.visible)').forEach(el => observer.observe(el)); }, 1000);
+            },
+
+            fetchData() {
+                const localData = localStorage.getItem('autobroker_data');
+                
+                if(localData) {
+                    try {
+                        this.vehicles = JSON.parse(localData);
+                        document.getElementById('loader').classList.add('hidden-spa');
+                        this.populateFilters();
+                        this.renderCatalog();
+                        if(this.isAdmin) this.renderAdmin();
+                    } catch (e) {
+                        this.loadFromSheet(); 
+                    }
+                } else {
+                    this.loadFromSheet();
+                }
+            },
+
+            loadFromSheet() {
+                Papa.parse(this.sheetCsvUrl, {
+                    download: true, header: true, dynamicTyping: true, skipEmptyLines: true,
+                    transformHeader: function(h) { return h.trim(); },
+                    complete: (results) => {
+                        this.vehicles = results.data.map(v => {
+                            v.photos =[
+                                this.getDriveDirectLink(v.Link_Foto1), this.getDriveDirectLink(v.Link_Foto2),
+                                this.getDriveDirectLink(v.Link_Foto3), this.getDriveDirectLink(v.Link_Foto4)
+                            ].filter(Boolean);
+                            v.currentPhotoIdx = 0;
+                            v.oculto = false;
+                            return v;
+                        });
+                        
+                        try { localStorage.setItem('autobroker_data', JSON.stringify(this.vehicles)); } catch(e) {}
+                        
+                        document.getElementById('loader').classList.add('hidden-spa');
+                        this.populateFilters();
+                        this.renderCatalog();
+                        if(this.isAdmin) this.renderAdmin();
+                    }
+                });
+            },
+            
+            resetToSheet() {
+                if(confirm("¿Estás seguro de restaurar? Se borrarán los vehículos locales y volverá a cargar lo que tienes en el Excel original.")){
+                    localStorage.removeItem('autobroker_data');
+                    document.getElementById('loader').classList.remove('hidden-spa');
+                    this.loadFromSheet();
+                }
+            },
+
+            populateFilters() {
+                const select = document.getElementById('filterBrand');
+                select.innerHTML = '<option value="ALL">Todas las Marcas</option>';
+                this.vehicles.forEach(v => { if(v.Marca && !v.oculto) this.brands.add(v.Marca) });
+                this.brands.forEach(brand => {
+                    const option = document.createElement('option');
+                    option.value = brand; option.textContent = brand;
+                    select.appendChild(option);
+                });
+            },
+
+            formatCurrency: (val) => new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 }).format(val),
+            formatPlate: (id) => `***-${String(id).padStart(3, '0')}`,
+
+            changePhoto(id, direction, event) {
+                event.stopPropagation();
+                const v = this.vehicles.find(item => String(item.ID) === String(id));
+                if (!v || !v.photos || v.photos.length <= 1) return;
+
+                v.currentPhotoIdx += direction;
+                if (v.currentPhotoIdx >= v.photos.length) v.currentPhotoIdx = 0;
+                if (v.currentPhotoIdx < 0) v.currentPhotoIdx = v.photos.length - 1;
+
+                document.getElementById(`img-${id}`).src = v.photos[v.currentPhotoIdx];
+            },
+
+            resetPhoto(id) {
+                const v = this.vehicles.find(item => String(item.ID) === String(id));
+                if (!v || !v.photos || v.photos.length <= 1) return;
+                v.currentPhotoIdx = 0; 
+                document.getElementById(`img-${id}`).src = v.photos[0];
+            },
+
+            renderCatalog() {
+                const grid = document.getElementById('catalogGrid');
+                grid.innerHTML = '';
+                
+                const search = document.getElementById('searchInput').value.toLowerCase();
+                const brand = document.getElementById('filterBrand').value;
+
+                const filtered = this.vehicles.filter(v => {
+                    if(!v.ID || v.oculto) return false;
+                    const matchText = (v.Marca||'').toLowerCase().includes(search) || (v.Modelo||'').toLowerCase().includes(search) || (v.Color||'').toLowerCase().includes(search);
+                    const matchBrand = brand === 'ALL' || v.Marca === brand;
+                    return matchText && matchBrand;
+                });
+
+                filtered.forEach((v) => {
+                    const isSold = (v.Estado||'').toLowerCase() === 'vendido' || (v.Estado||'').toLowerCase() === 'reservado';
+                    const hasGallery = v.photos && v.photos.length > 1;
+                    const photoSrc = (v.photos && v.photos[0]) ? v.photos[0] : 'https://via.placeholder.com/800x600?text=Sin+Foto';
+
+                    grid.innerHTML += `
+                        <div class="bg-surface rounded-2xl overflow-hidden border border-gray-800 shadow-xl scroll-anim" onmouseleave="app.resetPhoto('${v.ID}')">
+                            <div class="photo-container group watermark-wrapper relative h-64 w-full bg-dark">
+                                
+                                <img id="img-${v.ID}" src="${photoSrc}" alt="${v.Marca}" draggable="false" class="vehicle-img w-full h-full object-cover ${isSold ? 'grayscale opacity-50' : ''}">
+                                
+                                <div class="absolute top-4 right-4 z-20">
+                                    <span class="px-3 py-1 text-xs font-bold rounded-full shadow-lg ${isSold ? 'bg-red-900 text-white' : 'bg-gold text-dark'}">
+                                        ${(v.Estado||'').toUpperCase()}
+                                    </span>
+                                </div>
+
+                                ${hasGallery ? `
+                                    <button onmouseenter="this.parentElement.classList.add('hide-overlay')" onmouseleave="this.parentElement.classList.remove('hide-overlay')" onclick="app.changePhoto('${v.ID}', -1, event)" class="absolute left-2 top-1/2 -translate-y-1/2 z-40 text-gold hover:text-white transition drop-shadow-[0_2px_5px_rgba(0,0,0,0.9)] text-5xl font-bold">
+                                        <i class="fa-solid fa-chevron-left"></i>
+                                    </button>
+                                    <button onmouseenter="this.parentElement.classList.add('hide-overlay')" onmouseleave="this.parentElement.classList.remove('hide-overlay')" onclick="app.changePhoto('${v.ID}', 1, event)" class="absolute right-2 top-1/2 -translate-y-1/2 z-40 text-gold hover:text-white transition drop-shadow-[0_2px_5px_rgba(0,0,0,0.9)] text-5xl font-bold">
+                                        <i class="fa-solid fa-chevron-right"></i>
+                                    </button>
+                                ` : ''}
+
+                                <div class="card-overlay absolute inset-0 flex flex-col justify-between p-6 z-20">
+                                    <div class="text-center mt-4">
+                                        <h3 class="text-xl font-bold text-white tracking-wide">${v.Marca}</h3>
+                                        <p class="text-gold font-medium">${v.Modelo}</p>
+                                    </div>
+                                    <div class="bg-black/90 p-4 rounded-xl border border-white/20 text-sm text-gray-300 grid grid-cols-2 gap-3 mb-2 shadow-2xl">
+                                        <div class="flex items-center gap-2"><i class="fa-solid fa-id-card text-gold w-4"></i> ${this.formatPlate(v.ID)}</div>
+                                        <div class="flex items-center gap-2"><i class="fa-solid fa-palette text-gold w-4"></i> ${v.Color}</div>
+                                        <div class="flex items-center gap-2 col-span-2"><i class="fa-solid fa-car-burst text-gold w-4"></i> Daño: ${v.Nivel_Siniestro}</div>
+                                    </div>
+                                    <button onclick="app.shareToWhatsApp('${v.ID}')" class="w-full bg-white hover:bg-green-500 text-dark hover:text-white font-bold py-2 rounded-lg transition shadow-lg flex items-center justify-center gap-2">
+                                        <i class="fa-brands fa-whatsapp text-lg"></i> Me Interesa
+                                    </button>
+                                </div>
+                            </div>
+                            
+                            <div class="p-6">
+                                <div class="flex justify-between items-start mb-2">
+                                    <h3 class="font-serif font-bold text-xl text-white">${v.Marca} ${v.Modelo}</h3>
+                                    <span class="text-gray-500 font-medium">${v.Año}</span>
+                                </div>
+                                <p class="text-gray-400 text-sm line-clamp-2 h-10 mb-4">${v.Descripción}</p>
+                                <div class="pt-4 border-t border-gray-800 flex justify-between items-center mt-2">
+                                    <span class="text-[10px] text-gray-500 uppercase tracking-widest">Precio Broker</span>
+                                    <span class="text-xl font-bold text-white">${this.formatCurrency(v.Precio)}</span>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                });
+
+                if(filtered.length === 0) grid.innerHTML = `<div class="col-span-full text-center py-10 text-gray-500">No se encontraron resultados.</div>`;
+            },
+
+            handleLogin(e) {
+                e.preventDefault();
+                if(document.getElementById('adminPin').value === this.correctPin) {
+                    this.isAdmin = true;
+                    document.getElementById('adminPin').value = '';
+                    this.navigate('admin-dashboard');
+                } else alert('PIN Incorrecto');
+            },
+            logout() { this.isAdmin = false; this.navigate('home'); },
+            
+            renderAdmin() {
+                const list = document.getElementById('adminList');
+                list.innerHTML = '';
+                
+                this.vehicles.forEach(v => {
+                    if(!v.ID || v.oculto) return;
+                    
+                    let statusClass = "text-green-500 border-green-900";
+                    if(v.Estado === "Reservado") statusClass = "text-yellow-500 border-yellow-900";
+                    if(v.Estado === "Vendido") statusClass = "text-red-500 border-red-900";
+
+                    const photoCount = v.photos ? v.photos.length : 0;
+
+                    list.innerHTML += `
+                        <div class="grid grid-cols-12 gap-4 p-4 items-center hover:bg-gray-900 transition duration-200">
+                            <div class="col-span-2 text-gold text-sm font-medium truncate">${v.ID}</div>
+                            <div class="col-span-3">
+                                <h4 class="text-white font-bold text-sm">${v.Marca} ${v.Modelo}</h4>
+                                <p class="text-xs text-gray-500">${v.Año} | ${v.Color}</p>
+                            </div>
+                            <div class="col-span-2 text-center text-white font-bold">${photoCount}</div>
+                            <div class="col-span-2 text-white font-medium text-sm">${this.formatCurrency(v.Precio)}</div>
+                            <div class="col-span-2">
+                                <span class="px-2 py-1 border ${statusClass} rounded text-xs">${v.Estado}</span>
+                            </div>
+                            <div class="col-span-1 flex justify-center gap-3">
+                                <button onclick="app.editVehicle('${v.ID}')" class="text-blue-500 hover:text-blue-400 transition"><i class="fa-solid fa-pen"></i></button>
+                                <button onclick="app.deleteVehicle('${v.ID}')" class="text-red-500 hover:text-red-400 transition"><i class="fa-solid fa-trash"></i></button>
+                            </div>
+                        </div>
+                    `;
+                });
+            },
+
+            createVehicle() {
+                this.isCreatingNew = true;
+                this.editingOriginalId = null;
+                document.getElementById('edit-id').value = '';
+                document.getElementById('edit-marca').value = '';
+                document.getElementById('edit-modelo').value = '';
+                document.getElementById('edit-ano').value = '';
+                document.getElementById('edit-precio').value = '';
+                document.getElementById('edit-color').value = '';
+                document.getElementById('edit-estado').value = 'Disponible';
+                document.getElementById('edit-siniestro').value = 'Ninguno';
+                document.getElementById('edit-desc').value = '';
+                
+                this.tempPhotos =[];
+                this.renderPhotoBoxes();
+                document.getElementById('fileInput').value = ''; 
+                document.getElementById('fileCountText').innerText = "No se ha seleccionado ningún archivo";
+
+                this.navigate('admin-edit');
+            },
+
+            editVehicle(id) {
+                this.isCreatingNew = false;
+                this.editingOriginalId = String(id);
+                const v = this.vehicles.find(item => String(item.ID) === this.editingOriginalId);
+                if(!v) return;
+
+                document.getElementById('edit-id').value = v.ID;
+                document.getElementById('edit-marca').value = v.Marca;
+                document.getElementById('edit-modelo').value = v.Modelo;
+                document.getElementById('edit-ano').value = v.Año;
+                document.getElementById('edit-precio').value = v.Precio;
+                document.getElementById('edit-color').value = v.Color;
+                document.getElementById('edit-estado').value = v.Estado;
+                document.getElementById('edit-siniestro').value = v.Nivel_Siniestro;
+                document.getElementById('edit-desc').value = v.Descripción;
+
+                this.tempPhotos = [...(v.photos || [])];
+                this.renderPhotoBoxes();
+                document.getElementById('fileInput').value = ''; 
+                document.getElementById('fileCountText').innerText = "No se ha seleccionado ningún archivo";
+
+                this.navigate('admin-edit');
+            },
+
+            renderPhotoBoxes() {
+                const photoBoxContainer = document.getElementById('edit-photo-boxes');
+                photoBoxContainer.innerHTML = '';
+                
+                for(let i=0; i<4; i++) {
+                    const photoUrl = this.tempPhotos[i] || null;
+                    const content = photoUrl 
+                        ? `<img src="${photoUrl}" class="w-full h-full object-cover opacity-60 absolute inset-0 z-0">
+                           <button type="button" onclick="app.removePhotoFromTemp(${i})" class="absolute top-2 right-2 text-white hover:text-red-500 z-10 drop-shadow-md bg-black/50 p-2 rounded-full" title="Borrar foto"><i class="fa-solid fa-trash-can text-lg"></i></button>
+                           <span class="relative z-10 text-white font-bold text-lg drop-shadow-[0_2px_2px_rgba(0,0,0,1)]">Foto_${i+1}</span>`
+                        : `<span class="text-gray-600 font-medium text-lg z-0">Foto_${i+1}</span>`;
+
+                    photoBoxContainer.innerHTML += `
+                        <div class="photo-box relative h-40 bg-surface rounded-lg flex items-center justify-center overflow-hidden border border-gray-800 ${!photoUrl ? 'border-dashed' : ''}">
+                            ${content}
+                        </div>
+                    `;
+                }
+            },
+
+            async handleFileUpload(event) {
+                const files = Array.from(event.target.files);
+                if(!files || files.length === 0) return;
+                
+                let availableSlots = 4 - this.tempPhotos.length;
+                
+                if(availableSlots <= 0) {
+                    alert("Ya tienes 4 fotos. Borra alguna existente primero.");
+                    event.target.value = '';
+                    return;
+                }
+                
+                let filesToRead = files.slice(0, availableSlots);
+
+                if (files.length > availableSlots) {
+                    alert(`Solo puedes tener un máximo de 4 fotos. Se cargarán las primeras ${availableSlots}.`);
+                }
+
+                document.getElementById('fileCountText').innerText = "Procesando fotos, por favor espera...";
+
+                for (let file of filesToRead) {
+                    try {
+                        await new Promise(resolve => setTimeout(resolve, 50));
+                        const compressedBase64 = await this.compressImage(file, 600, 0.5);
+                        this.tempPhotos.push(compressedBase64);
+                        this.renderPhotoBoxes(); 
+                    } catch (error) {
+                        console.error("Error al procesar foto:", error);
+                        alert("Hubo un problema al leer una de las imágenes. Intenta con otra.");
+                    }
+                }
+                
+                document.getElementById('fileCountText').innerText = `${this.tempPhotos.length} foto(s) actuales`;
+                event.target.value = ''; 
+            },
+
+            removePhotoFromTemp(index) {
+                this.tempPhotos.splice(index, 1);
+                this.renderPhotoBoxes();
+                document.getElementById('fileCountText').innerText = `${this.tempPhotos.length} foto(s) actuales`;
+            },
+
+            saveVehicle(e) {
+                e.preventDefault();
+                const newId = document.getElementById('edit-id').value.trim();
+                
+                if (this.isCreatingNew || newId !== this.editingOriginalId) {
+                    const existing = this.vehicles.find(item => String(item.ID) === newId && !item.oculto);
+                    if (existing) {
+                        alert(`El ID "${newId}" ya está en uso. Por favor, elige un ID único.`);
+                        return; 
+                    }
+                }
+
+                let v;
+                if (this.isCreatingNew) {
+                    v = { oculto: false };
+                    this.vehicles.unshift(v); 
+                } else {
+                    v = this.vehicles.find(item => String(item.ID) === this.editingOriginalId);
+                }
+                
+                v.ID = newId;
+                v.Marca = document.getElementById('edit-marca').value;
+                v.Modelo = document.getElementById('edit-modelo').value;
+                v.Año = document.getElementById('edit-ano').value;
+                v.Precio = document.getElementById('edit-precio').value;
+                v.Color = document.getElementById('edit-color').value;
+                v.Estado = document.getElementById('edit-estado').value;
+                v.Nivel_Siniestro = document.getElementById('edit-siniestro').value;
+                v.Descripción = document.getElementById('edit-desc').value;
+                v.photos =[...this.tempPhotos];
+                
+                try {
+                    localStorage.setItem('autobroker_data', JSON.stringify(this.vehicles));
+                    this.renderAdmin();
+                    this.renderCatalog(); 
+                    this.navigate('admin-dashboard');
+                } catch (error) {
+                    console.error("Límite de memoria", error);
+                    if (this.isCreatingNew) {
+                        this.vehicles.shift();
+                    }
+                    alert("⚠️ MEMORIA LLENA:\n\nEl navegador de este teléfono no permite guardar más datos.\n\nPor favor borra vehículos antiguos para hacer espacio.");
+                }
+            },
+
+            deleteVehicle(id) {
+                if(confirm(`ATENCIÓN: Se ocultará de la web el vehículo ID: ${id}. \n\nRecuerda que para borrarlo definitivamente debes hacerlo también en la Base de Datos. ¿Proceder?`)){
+                    const v = this.vehicles.find(item => String(item.ID) === String(id));
+                    if(v) {
+                        v.oculto = true;
+                        try {
+                            localStorage.setItem('autobroker_data', JSON.stringify(this.vehicles));
+                        } catch(error) {}
+                    }
+                    this.renderAdmin();
+                    this.renderCatalog();
+                }
+            },
+
+            shareToWhatsApp(id) {
+                const v = this.vehicles.find(item => String(item.ID) === String(id));
+                if(!v) return;
+                const msg = `Saludo. Me interesa éste vehículo:\n\n🚗 *${v.Marca} ${v.Modelo}* (${v.Año})\n💰 ${this.formatCurrency(v.Precio)}\n🎨 Color: ${v.Color}\n\n🆔 ID: ${v.ID}`;
+                window.open(`https://wa.me/${this.adminWhatsApp}?text=${encodeURIComponent(msg)}`, '_blank');
+            }
+        };
+
+        document.addEventListener('DOMContentLoaded', () => app.init());
+    </script>
+</body>
+</html>
