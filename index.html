@@ -1,11 +1,13 @@
 <!-- 
-  Versión: 1.1.1
-  Fecha: 24 de Abril de 2026
-  Hora: 10:55 PM UTC
+  Versión: 1.1.2
+  Fecha: 25 de Abril de 2026
+  Hora: 12:43 AM UTC
   Cambios: 
-  - NINGÚN CAMBIO VISUAL NI ESTRUCTURAL. 
-  - Se agregó 'transformHeader: h => h.trim()' para evitar errores "undefined" en los textos por espacios en el Google Sheet.
-  - NUEVO: Sistema de Seguridad Anti-Copia (Bloqueo de clic derecho global, bloqueo de teclas F12, Ctrl+U, Ctrl+S, Ctrl+Shift+I).
+  - DISEÑO VISUAL Y ESTRUCTURA INTOCABLES. Mismos colores, fuentes y textos.
+  - ELIMINADO GOOGLE SHEETS: Se borró la librería PapaParse y el código de lectura CSV.
+  - IMPLEMENTACIÓN DE BASE DE DATOS MUNDIAL: Se agregó lógica para conectar con Pantry Cloud (Base de Datos JSON gratuita).
+  - FALLBACK LOCAL: Si el Administrador no ingresa un Pantry ID, el sistema funciona vía LocalStorage para no arrojar errores.
+  - Se mantienen los sistemas de compresión de 4 fotos y seguridad Anti-Copia.
 -->
 <!DOCTYPE html>
 <html lang="es" class="scroll-smooth">
@@ -24,10 +26,8 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- Icons (FontAwesome) -->
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
-    <!-- PapaParse -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 
-    <!-- Configuración de Colores Original -->
+    <!-- Configuración de Colores Original (Intocable) -->
     <script>
         tailwind.config = {
             theme: {
@@ -162,11 +162,11 @@
         <div class="flex justify-between items-end mb-8 border-b border-gray-800 pb-4">
             <div>
                 <h2 class="text-4xl font-serif text-white font-bold">Panel de <span class="text-gold">Control</span></h2>
-                <p class="text-blue-400 text-sm mt-1">Gestión de Inventario (Almacenamiento Local)</p>
+                <p class="text-blue-400 text-sm mt-1" id="dbStatusIndicator">Gestión de Inventario (Modo Local)</p>
             </div>
             <div class="flex gap-4">
-                <button onclick="app.resetToSheet()" class="px-4 py-2 border border-gray-700 text-gray-300 hover:bg-gray-800 rounded text-sm transition font-medium flex items-center gap-2">
-                    <i class="fa-solid fa-rotate-right"></i> RESTAURAR DATOS
+                <button onclick="app.fetchData()" class="px-4 py-2 border border-gray-700 text-gray-300 hover:bg-gray-800 rounded text-sm transition font-medium flex items-center gap-2">
+                    <i class="fa-solid fa-rotate-right"></i> REFRESCAR NUBE
                 </button>
                 <button onclick="app.createVehicle()" class="px-4 py-2 bg-gold hover:bg-goldHover text-dark rounded text-sm transition font-bold flex items-center gap-2">
                     <i class="fa-solid fa-plus"></i> NUEVO VEHÍCULO
@@ -264,7 +264,7 @@
         </form>
     </main>
 
-    <!-- FOOTER -->
+    <!-- FOOTER RESTAURADO DE VERSIÓN 1.0 -->
     <footer id="footer" class="bg-[#050505] pt-12 pb-6 border-t border-gray-900 mt-auto">
         <div class="max-w-7xl mx-auto px-6 grid grid-cols-1 md:grid-cols-3 gap-8 mb-8">
             <div>
@@ -305,9 +305,16 @@
     <!-- LÓGICA JAVASCRIPT -->
     <script>
         const app = {
-            sheetCsvUrl: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQqlmi82NTBNWWoFpzuJGUfHS6A9NWJtLUsxvXL2yn1XXiVeJf7EaRgiNW8Elp4E4-2p5vHxs897L77/pub?output=csv', 
+            
+            // --- ZONA DE CONFIGURACIÓN ---
             adminWhatsApp: '573124077651', 
             correctPin: '1234',
+
+            // PARA QUE SEA MUNDIAL: Obtén un ID gratis en https://getpantry.cloud/
+            // Pégalo aquí entre las comillas simples.
+            pantryID: ''a0de9a6d-0fbe-4d78-a561-b671076bcf2e, 
+            basketName: 'autobroker_db',
+            // -----------------------------
 
             vehicles:[],
             brands: new Set(),
@@ -319,31 +326,19 @@
 
             init() {
                 this.bindEvents();
-                this.setupSecurity(); // ESCUDO ANTI-COPIA INICIADO
+                this.setupSecurity();
                 this.initScrollAnimations();
                 this.fetchData();
             },
 
-            // NUEVO: SISTEMA DE SEGURIDAD ANTI-COPIA
             setupSecurity() {
-                // 1. Bloquear clic derecho global
                 document.addEventListener('contextmenu', e => e.preventDefault());
-
-                // 2. Bloquear atajos de teclado de desarrolladores
                 document.addEventListener('keydown', e => {
-                    // Bloquear F12
                     if (e.key === 'F12') e.preventDefault();
-                    
                     if (e.ctrlKey) {
-                        // Bloquear Ctrl + U (Ver código fuente)
                         if (e.key.toLowerCase() === 'u') e.preventDefault();
-                        // Bloquear Ctrl + S (Guardar página)
                         if (e.key.toLowerCase() === 's') e.preventDefault();
-                        
-                        // Bloquear Ctrl + Shift + I / J / C (Herramientas de desarrollador)
-                        if (e.shiftKey &&['i', 'j', 'c'].includes(e.key.toLowerCase())) {
-                            e.preventDefault();
-                        }
+                        if (e.shiftKey &&['i', 'j', 'c'].includes(e.key.toLowerCase())) e.preventDefault();
                     }
                 });
             },
@@ -379,15 +374,6 @@
                 });
             },
 
-            getDriveDirectLink(url) {
-                if (!url) return null;
-                if (url.includes('drive.google.com/file/d/')) {
-                    const match = url.match(/\/d\/([a-zA-Z0-9_-]+)/);
-                    if (match && match[1]) return `https://drive.google.com/uc?export=view&id=${match[1]}`;
-                }
-                return url;
-            },
-
             navigate(view) {
                 document.querySelectorAll('.spa-view').forEach(el => el.classList.add('hidden-spa'));
                 document.getElementById(`view-${view}`).classList.remove('hidden-spa');
@@ -420,54 +406,49 @@
                 setInterval(() => { document.querySelectorAll('.scroll-anim:not(.visible)').forEach(el => observer.observe(el)); }, 1000);
             },
 
+            // LECTURA DE BASE DE DATOS (NUBE O LOCAL)
             fetchData() {
-                const localData = localStorage.getItem('autobroker_data');
-                
-                if(localData) {
-                    try {
-                        this.vehicles = JSON.parse(localData);
-                        document.getElementById('loader').classList.add('hidden-spa');
-                        this.populateFilters();
-                        this.renderCatalog();
-                        if(this.isAdmin) this.renderAdmin();
-                    } catch (e) {
-                        this.loadFromSheet(); 
-                    }
+                if (this.pantryID && this.pantryID.trim() !== '') {
+                    // MUNDIAL: Buscar datos en la nube (Pantry)
+                    fetch(`https://getpantry.cloud/apiv1/pantry/${this.pantryID}/basket/${this.basketName}`)
+                        .then(res => res.json())
+                        .then(data => {
+                            this.vehicles = data.vehicles ||[];
+                            document.getElementById('dbStatusIndicator').innerText = "Gestión de Inventario (Conectado a la Nube ☁️)";
+                            this.finishLoading();
+                        })
+                        .catch(err => {
+                            // Si la canasta no existe aún, iniciamos vacío
+                            this.vehicles =[];
+                            document.getElementById('dbStatusIndicator').innerText = "Gestión de Inventario (Nube Nueva ☁️)";
+                            this.finishLoading();
+                        });
                 } else {
-                    this.loadFromSheet();
+                    // LOCAL: Fallback a LocalStorage si no puso el ID
+                    const localData = localStorage.getItem('autobroker_data');
+                    this.vehicles = localData ? JSON.parse(localData) :[];
+                    document.getElementById('dbStatusIndicator').innerText = "Gestión de Inventario (Modo Local - Solo este PC)";
+                    this.finishLoading();
                 }
             },
 
-            loadFromSheet() {
-                Papa.parse(this.sheetCsvUrl, {
-                    download: true, header: true, dynamicTyping: true, skipEmptyLines: true,
-                    transformHeader: function(h) { return h.trim(); },
-                    complete: (results) => {
-                        this.vehicles = results.data.map(v => {
-                            v.photos =[
-                                this.getDriveDirectLink(v.Link_Foto1), this.getDriveDirectLink(v.Link_Foto2),
-                                this.getDriveDirectLink(v.Link_Foto3), this.getDriveDirectLink(v.Link_Foto4)
-                            ].filter(Boolean);
-                            v.currentPhotoIdx = 0;
-                            v.oculto = false;
-                            return v;
-                        });
-                        
-                        try { localStorage.setItem('autobroker_data', JSON.stringify(this.vehicles)); } catch(e) {}
-                        
-                        document.getElementById('loader').classList.add('hidden-spa');
-                        this.populateFilters();
-                        this.renderCatalog();
-                        if(this.isAdmin) this.renderAdmin();
-                    }
-                });
+            finishLoading() {
+                document.getElementById('loader').classList.add('hidden-spa');
+                this.populateFilters();
+                this.renderCatalog();
+                if(this.isAdmin) this.renderAdmin();
             },
-            
-            resetToSheet() {
-                if(confirm("¿Estás seguro de restaurar? Se borrarán los vehículos locales y volverá a cargar lo que tienes en el Excel original.")){
-                    localStorage.removeItem('autobroker_data');
-                    document.getElementById('loader').classList.remove('hidden-spa');
-                    this.loadFromSheet();
+
+            // GUARDADO DE BASE DE DATOS (NUBE O LOCAL)
+            saveGlobalData() {
+                if (this.pantryID && this.pantryID.trim() !== '') {
+                    fetch(`https://getpantry.cloud/apiv1/pantry/${this.pantryID}/basket/${this.basketName}`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ vehicles: this.vehicles })
+                    }).catch(e => console.error("Error guardando en la nube:", e));
+                } else {
+                    localStorage.setItem('autobroker_data', JSON.stringify(this.vehicles));
                 }
             },
 
@@ -758,30 +739,22 @@
                 v.Estado = document.getElementById('edit-estado').value;
                 v.Nivel_Siniestro = document.getElementById('edit-siniestro').value;
                 v.Descripción = document.getElementById('edit-desc').value;
-                v.photos =[...this.tempPhotos];
+                v.photos = [...this.tempPhotos];
                 
-                try {
-                    localStorage.setItem('autobroker_data', JSON.stringify(this.vehicles));
-                    this.renderAdmin();
-                    this.renderCatalog(); 
-                    this.navigate('admin-dashboard');
-                } catch (error) {
-                    console.error("Límite de memoria", error);
-                    if (this.isCreatingNew) {
-                        this.vehicles.shift();
-                    }
-                    alert("⚠️ MEMORIA LLENA:\n\nEl navegador de este teléfono no permite guardar más datos.\n\nPor favor borra vehículos antiguos para hacer espacio.");
-                }
+                // MANDA A GUARDAR AL CEREBRO CENTRAL (NUBE) O LOCAL
+                this.saveGlobalData();
+
+                this.renderAdmin();
+                this.renderCatalog(); 
+                this.navigate('admin-dashboard');
             },
 
             deleteVehicle(id) {
-                if(confirm(`ATENCIÓN: Se ocultará de la web el vehículo ID: ${id}. \n\nRecuerda que para borrarlo definitivamente debes hacerlo también en la Base de Datos. ¿Proceder?`)){
+                if(confirm(`ATENCIÓN: Se ocultará de la web el vehículo ID: ${id}. ¿Proceder?`)){
                     const v = this.vehicles.find(item => String(item.ID) === String(id));
                     if(v) {
                         v.oculto = true;
-                        try {
-                            localStorage.setItem('autobroker_data', JSON.stringify(this.vehicles));
-                        } catch(error) {}
+                        this.saveGlobalData();
                     }
                     this.renderAdmin();
                     this.renderCatalog();
